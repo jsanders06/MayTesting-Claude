@@ -700,43 +700,6 @@ $flowCards.Padding=New-Object System.Windows.Forms.Padding(10,10,0,0)
 $cCPU=New-Card 'CPU Usage'; $cMEM=New-Card 'Memory'; $cDSK=New-Card 'Disk C:'; $cGPU=New-Card 'GPU'
 $flowCards.Controls.AddRange(@($cCPU,$cMEM,$cDSK,$cGPU))
 
-# Sparkline panel (CPU=cyan, RAM=green, 60 data points @ 5s)
-$script:cpuHistory=[System.Collections.Generic.List[float]]::new()
-$script:ramHistory=[System.Collections.Generic.List[float]]::new()
-$pnlSpark=New-Object System.Windows.Forms.Panel
-$pnlSpark.Dock='Top'; $pnlSpark.Height=72; $pnlSpark.BackColor=$C.BgCard
-$pnlSpark.Margin=New-Object System.Windows.Forms.Padding(0)
-$lblSparkHdr=New-Object System.Windows.Forms.Label
-$lblSparkHdr.Text='  CPU  /  RAM  — last 5 min'; $lblSparkHdr.Dock='Top'; $lblSparkHdr.Height=18
-$lblSparkHdr.ForeColor=$C.Muted; $lblSparkHdr.BackColor=$C.BgCard
-$lblSparkHdr.Font=New-Object System.Drawing.Font('Segoe UI',7)
-$pnlSparkCanvas=New-Object System.Windows.Forms.Panel
-$pnlSparkCanvas.Dock='Fill'; $pnlSparkCanvas.BackColor=$C.BgCard
-$pnlSparkCanvas.Add_Paint({
-    param($s,$e)
-    $g=$e.Graphics; $g.SmoothingMode='AntiAlias'
-    $w=$pnlSparkCanvas.Width-4; $h=$pnlSparkCanvas.Height-4
-    $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(20,20,36))),[System.Drawing.Rectangle]::new(2,2,$w,$h))
-    $drawLine={param($hist,$pen)
-        $cnt=$hist.Count; if($cnt -lt 2){return}
-        $pts=[System.Drawing.PointF[]]::new($cnt)
-        for($i=0;$i -lt $cnt;$i++){
-            $pts[$i]=[System.Drawing.PointF]::new(2+($i/($cnt-1))*$w, 2+$h-($hist[$i]/100*$h))
-        }
-        $g.DrawLines($pen,$pts)
-    }
-    $penCPU=New-Object System.Drawing.Pen($C.Accent,1.5)
-    $penRAM=New-Object System.Drawing.Pen($C.Ok,1.5)
-    &$drawLine $script:cpuHistory $penCPU
-    &$drawLine $script:ramHistory $penRAM
-    $penCPU.Dispose(); $penRAM.Dispose()
-    # legend
-    $font=New-Object System.Drawing.Font('Segoe UI',7)
-    $g.DrawString("CPU",$font,(New-Object System.Drawing.SolidBrush($C.Accent)),[System.Drawing.PointF]::new(6,4))
-    $g.DrawString("RAM",$font,(New-Object System.Drawing.SolidBrush($C.Ok)),[System.Drawing.PointF]::new(32,4))
-    $font.Dispose()
-})
-$pnlSpark.Controls.AddRange(@($pnlSparkCanvas,$lblSparkHdr))
 
 $splitH=New-Object System.Windows.Forms.SplitContainer
 $splitH.Dock='Fill'; $splitH.Orientation='Horizontal'; $splitH.SplitterDistance=220; $splitH.BackColor=$C.BgDark
@@ -762,7 +725,7 @@ $lblRefAt=New-Object System.Windows.Forms.Label; $lblRefAt.Text='Last refreshed:
 $lblRefAt.ForeColor=$C.Muted; $lblRefAt.AutoSize=$true; $lblRefAt.Location=New-Object System.Drawing.Point(240,11)
 $pnlHFoot.Controls.AddRange(@($btnRefH,$chkAuto,$lblRefAt))
 
-$tabH.Controls.AddRange(@($pnlHFoot,$splitH,$pnlSpark,$flowCards))
+$tabH.Controls.AddRange(@($pnlHFoot,$splitH,$flowCards))
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 2 — EVENT VIEWER
@@ -1746,35 +1709,17 @@ $btnSSLCheck.Add_Click({
     Load-SSL $h ([int]$numSSLPort.Value)
 })
 
-# Sparkline 5-second timer
-$sparkTimer=New-Object System.Windows.Forms.Timer; $sparkTimer.Interval=5000
-$sparkTimer.Add_Tick({
-    if($tabs.SelectedTab -ne $tabH){return}
-    try {
-        $cpu=[math]::Round((Get-CPUUsage),1)
-        $mem=(Get-MemInfo).Pct
-        if($script:cpuHistory.Count -ge 60){$script:cpuHistory.RemoveAt(0)}
-        if($script:ramHistory.Count -ge 60){$script:ramHistory.RemoveAt(0)}
-        $script:cpuHistory.Add([float]$cpu)
-        $script:ramHistory.Add([float]$mem)
-        $pnlSparkCanvas.Invalidate()
-    } catch {}
-})
 
 # ─── Timer + startup ──────────────────────────────────────────────────────────
 $timer=New-Object System.Windows.Forms.Timer; $timer.Interval=30000
 $timer.Add_Tick({ if($chkAuto.Checked -and $tabs.SelectedTab -eq $tabH){ Update-Health } })
 $timer.Start()
-$sparkTimer.Start()
 
 $form.Add_Shown({
     $script:formReady=$true
     Update-Health
     Load-Services
-    # seed sparkline with one reading
-    $script:cpuHistory.Add([float](Get-CPUUsage))
-    $script:ramHistory.Add([float](Get-MemInfo).Pct)
 })
-$form.Add_FormClosed({ $timer.Stop(); $timer.Dispose(); $sparkTimer.Stop(); $sparkTimer.Dispose() })
+$form.Add_FormClosed({ $timer.Stop(); $timer.Dispose() })
 
 [System.Windows.Forms.Application]::Run($form)
